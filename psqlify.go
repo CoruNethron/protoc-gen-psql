@@ -80,8 +80,10 @@ func (p *PSQLModule) generateFiles(
 	}
 	p.Debug("Param: alter=" + fmt.Sprintf("%v", alter))
 
-	// quote: wrap table and column identifiers in double quotes so PostgreSQL
-	// keeps their case instead of folding unquoted identifiers to lowercase.
+	// quote: wrap column identifiers in double quotes so PostgreSQL keeps their
+	// case instead of folding unquoted identifiers to lowercase. Table names are
+	// left unquoted so they fold to lowercase, matching the DML which names tables
+	// after lowercase proto field names.
 	// Mirrors the alter flag (--psql_out="quote:." or "quote,alter:.").
 	quote := false
 	if ok, _ := p.Parameters().Bool("quote"); ok {
@@ -267,9 +269,6 @@ func (v *PSQLVisitor) VisitMessage(m pgs.Message) (pgs.Visitor, error) {
 	definitions := appendSlices(prefixes, v.columns, constraints, suffixes)
 
 	tableName := m.Name().String()
-	if v.quote {
-		tableName = `"` + tableName + `"`
-	}
 
 	data := struct {
 		FileName    string
