@@ -1,7 +1,7 @@
 empty :=
 space := $(empty) $(empty)
 NAME := psql
-PACKAGE := github.com/intrinsec/protoc-gen-$(NAME)
+PACKAGE := github.com/CoruNethron/protoc-gen-$(NAME)
 
 SHELL := /bin/bash
 
