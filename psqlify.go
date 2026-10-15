@@ -80,7 +80,16 @@ func (p *PSQLModule) generateFiles(
 	}
 	p.Debug("Param: alter=" + fmt.Sprintf("%v", alter))
 
-	v := initPSQLVisitor(p, bufInit, bufFinal, bufDataTable, bufRelationTable, alter)
+	// quote: wrap table and column identifiers in double quotes so PostgreSQL
+	// keeps their case instead of folding unquoted identifiers to lowercase.
+	// Mirrors the alter flag (--psql_out="quote:." or "quote,alter:.").
+	quote := false
+	if ok, _ := p.Parameters().Bool("quote"); ok {
+		quote = true
+	}
+	p.Debug("Param: quote=" + fmt.Sprintf("%v", quote))
+
+	v := initPSQLVisitor(p, bufInit, bufFinal, bufDataTable, bufRelationTable, alter, quote)
 	p.CheckErr(pgs.Walk(v, f), "unable to generate psql")
 
 	filePath := f.InputPath().String()
@@ -128,6 +137,7 @@ type PSQLVisitor struct {
 	relationTableW io.Writer
 	columns        []string
 	alter          bool
+	quote          bool
 }
 
 func initPSQLVisitor(
@@ -137,6 +147,7 @@ func initPSQLVisitor(
 	dataTableW io.Writer,
 	relationTableW io.Writer,
 	alter bool,
+	quote bool,
 ) pgs.Visitor {
 	v := &PSQLVisitor{
 		initW:          initW,
@@ -146,6 +157,7 @@ func initPSQLVisitor(
 		DebuggerCommon: d,
 		columns:        []string{},
 		alter:          alter,
+		quote:          quote,
 	}
 	v.Visitor = pgs.PassThroughVisitor(v)
 	return v
@@ -254,6 +266,11 @@ func (v *PSQLVisitor) VisitMessage(m pgs.Message) (pgs.Visitor, error) {
 
 	definitions := appendSlices(prefixes, v.columns, constraints, suffixes)
 
+	tableName := m.Name().String()
+	if v.quote {
+		tableName = `"` + tableName + `"`
+	}
+
 	data := struct {
 		FileName    string
 		Name        string
@@ -264,7 +281,7 @@ func (v *PSQLVisitor) VisitMessage(m pgs.Message) (pgs.Visitor, error) {
 		Suffixes    []string
 	}{
 		FileName:    m.File().Name().String(),
-		Name:        m.Name().String(),
+		Name:        tableName,
 		Definitions: definitions,
 		Prefixes:    prefixes,
 		Columns:     v.columns,
@@ -316,7 +333,11 @@ func (v *PSQLVisitor) VisitField(f pgs.Field) (pgs.Visitor, error) {
 
 	ok, err := f.Extension(psql.E_Column, &column)
 	if ok && err == nil {
-		v.columns = append(v.columns, f.Name().String()+" "+column)
+		colName := f.Name().String()
+		if v.quote {
+			colName = `"` + colName + `"`
+		}
+		v.columns = append(v.columns, colName+" "+column)
 	}
 
 	ok, err = f.Extension(psql.E_AutoFillOnUpdate, &auto_fill_value)
